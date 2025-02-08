@@ -3,7 +3,9 @@ package com.prathamngundikere.whoareyou.faceClassifier.presentation
 import androidx.camera.core.ImageProxy
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.prathamngundikere.whoareyou.faceClassifier.data.repository.FaceClassifierHelper
 import com.prathamngundikere.whoareyou.faceClassifier.domain.repository.FaceClassifier
+import com.prathamngundikere.whoareyou.faceClassifier.util.FaceDetectionState
 import com.prathamngundikere.whoareyou.faceClassifier.util.ResultState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,7 +19,7 @@ class MainViewModel @Inject constructor(
     private val faceClassifier: FaceClassifier
 ): ViewModel() {
 
-    private val _resultState = MutableStateFlow(ResultState())
+    private val _resultState = MutableStateFlow(FaceDetectionState())
     val resultState = _resultState.asStateFlow()
 
     fun processImage(
@@ -25,21 +27,15 @@ class MainViewModel @Inject constructor(
         scaleFactor: Float
     ) {
         viewModelScope.launch {
-            _resultState.update {
-                it.copy(isLoading = true)
-            }
-            _resultState.update {
-                it.copy(
-                    combinedResult = faceClassifier.processImage(
-                        imageProxy = imageProxy,
-                        scaleFactor = scaleFactor
-                    )
+            try {
+                val result = faceClassifier.processImage(imageProxy, scaleFactor)
+                _resultState.value = FaceDetectionState(
+                    combinedResult = result,
+                    croppedFaces = (faceClassifier as FaceClassifierHelper).getLastCroppedFaces()
                 )
+            } finally {
+                imageProxy.close()
             }
-            _resultState.update {
-                it.copy(isLoading = false)
-            }
-            imageProxy.close()
         }
     }
 

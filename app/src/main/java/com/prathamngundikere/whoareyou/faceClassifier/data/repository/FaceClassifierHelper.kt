@@ -51,6 +51,12 @@ class FaceClassifierHelper @Inject constructor(
         private const val TAG = "CombinedFaceProcessor"
     }
 
+    // Add this property to store the last cropped faces
+    private var lastCroppedFaces: List<Bitmap> = emptyList()
+
+    // Add this function to access the last cropped faces
+    fun getLastCroppedFaces(): List<Bitmap> = lastCroppedFaces
+
     private val faceDetectionFlow = MutableSharedFlow<FaceDetectorResult>(replay = 1)
 
     // Create and store the detector when the helper is created.
@@ -285,6 +291,8 @@ class FaceClassifierHelper @Inject constructor(
                 e.printStackTrace()
             }
         }
+        // Store the cropped faces
+        lastCroppedFaces = croppedFaces
         return croppedFaces
     }
 }
