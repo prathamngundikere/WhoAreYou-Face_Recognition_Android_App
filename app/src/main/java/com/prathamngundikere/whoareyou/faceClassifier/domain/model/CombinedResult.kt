@@ -12,5 +12,7 @@ import com.google.mediapipe.tasks.vision.facedetector.FaceDetectorResult
 data class CombinedResult(
     val faceDetections: FaceDetectorResult,
     val classifications: List<Pair<String, Float>>,
-    val inferenceTime: Long
+    val inferenceTime: Long,
+    val imageWidth: Int,
+    val imageHeight: Int
 )

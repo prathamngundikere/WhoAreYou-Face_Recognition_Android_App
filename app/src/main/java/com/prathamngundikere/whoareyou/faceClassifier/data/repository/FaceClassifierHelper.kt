@@ -103,8 +103,6 @@ class FaceClassifierHelper @Inject constructor(
         val croppedBitmap = cropFaces(
             bitmap = bitmap,
             result = faceDetectionResult,
-            imageWidth = imageProxy.width,
-            imageHeight = imageProxy.height,
             scaleFactor = scaleFactor
         )
         val classificationResults = mutableListOf<Pair<String, Float>>()
@@ -117,7 +115,9 @@ class FaceClassifierHelper @Inject constructor(
         CombinedResult(
             faceDetections = faceDetectionResult,
             classifications = classificationResults,
-            inferenceTime = totalTime
+            inferenceTime = totalTime,
+            imageWidth = mpImage.width,
+            imageHeight = mpImage.height
         )
     }
 
@@ -235,8 +235,6 @@ class FaceClassifierHelper @Inject constructor(
     private fun cropFaces(
         bitmap: Bitmap,
         result: FaceDetectorResult,
-        imageWidth: Int,
-        imageHeight: Int,
         scaleFactor: Float
     ): List<Bitmap> {
         Log.i(TAG, "In cropped faces")
@@ -245,52 +243,33 @@ class FaceClassifierHelper @Inject constructor(
         result.detections().forEach { detection ->
             val boundingBox = detection.boundingBox()
 
-            // Calculate the center of the face
-            val centerX = boundingBox.centerX() * scaleFactor
-            val centerY = boundingBox.centerY() * scaleFactor
+            var left = (boundingBox.left * scaleFactor).toInt().coerceIn(0, bitmap.width)
+            var top = (boundingBox.top * scaleFactor).toInt().coerceIn(0, bitmap.height)
+            var right = (boundingBox.right * scaleFactor).toInt().coerceIn(0, bitmap.width)
+            var bottom = (boundingBox.bottom * scaleFactor).toInt().coerceIn(0, bitmap.height)
 
-            // Calculate the original width and height of the detection
-            val originalWidth = (boundingBox.right - boundingBox.left) * scaleFactor
-            val originalHeight = (boundingBox.bottom - boundingBox.top) * scaleFactor
+            val width = (right - left)
+            val height = (bottom - top)
 
-            // Add margin (1.5x larger than the original detection)
-            val marginFactor = 1.5f
-            val targetSize = maxOf(originalWidth, originalHeight) * marginFactor
+            val maxSide = maxOf(width, height)
 
-            // Calculate new bounds with margin
-            var newLeft = (centerX - targetSize / 2).toInt()
-            var newTop = (centerY - targetSize / 2).toInt()
-            var cropSize = targetSize.toInt()
-
-            // Adjust bounds to ensure they're within the image
-            if (newLeft < 0) newLeft = 0
-            if (newTop < 0) newTop = 0
-            if (newLeft + cropSize > bitmap.width) {
-                cropSize = bitmap.width - newLeft
+            val centerX = boundingBox.centerX().toInt()
+            val centerY = boundingBox.centerY().toInt()
+            var newLeft = 0
+            var newTop = 0
+            if ((bitmap.width - maxSide) > 0 && (bitmap.height - maxSide) > 0) {
+                newLeft = (centerX - maxSide / 2).coerceIn(0, bitmap.width - maxSide)
+                newTop = (centerY - maxSide / 2).coerceIn(0, bitmap.height - maxSide)
             }
-            if (newTop + cropSize > bitmap.height) {
-                cropSize = bitmap.height - newTop
-            }
-
             try {
-                if (newLeft >= 0 && newTop >= 0 && cropSize > 0 &&
-                    newLeft + cropSize <= bitmap.width &&
-                    newTop + cropSize <= bitmap.height) {
-
-                    val faceBitmap = Bitmap.createBitmap(
-                        bitmap,
-                        newLeft,
-                        newTop,
-                        cropSize,
-                        cropSize
-                    )
-                    croppedFaces.add(faceBitmap)
-                }
+                val faceBitmap = Bitmap.createBitmap(bitmap, newLeft, newTop, maxSide, maxSide)
+                croppedFaces.add(faceBitmap)
             } catch (e: Exception) {
                 Log.e("FaceCrop", "Error Cropping the image: ${e.message}")
                 e.printStackTrace()
             }
         }
+
         // Store the cropped faces
         lastCroppedFaces = croppedFaces
         return croppedFaces

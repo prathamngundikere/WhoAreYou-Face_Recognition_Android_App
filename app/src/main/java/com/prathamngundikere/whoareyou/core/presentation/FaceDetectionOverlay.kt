@@ -11,6 +11,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.google.mediapipe.tasks.vision.facedetector.FaceDetectorResult
 import com.prathamngundikere.whoareyou.R
@@ -28,59 +29,36 @@ fun FaceDetectionOverlay(
     val boxColor = remember { Color(ContextCompat.getColor(context, R.color.teal_200)) }
 
     Canvas(
-        modifier = Modifier
-            .fillMaxSize()
+        modifier = Modifier.fillMaxSize()
     ) {
 
-        // Calculate aspect ratios
-        val imageAspectRatio = imageWidth.toFloat() / imageHeight
-        val canvasAspectRatio = size.width / size.height
+        val scaleFactor = min(size.width / imageWidth, size.height / imageHeight)
 
-        // Calculate actual dimensions maintaining aspect ratio
-        val scaledWidth: Float
-        val scaledHeight: Float
-        val offsetX: Float
-        val offsetY: Float
-
-        if (imageAspectRatio > canvasAspectRatio) {
-            // Image is wider than canvas
-            scaledWidth = size.width
-            scaledHeight = size.width / imageAspectRatio
-            offsetX = 0f
-            offsetY = (size.height - scaledHeight) / 2
-        } else {
-            // Image is taller than canvas
-            scaledHeight = size.height
-            scaledWidth = size.height * imageAspectRatio
-            offsetX = (size.width - scaledWidth) / 2
-            offsetY = 0f
-        }
-
-        // Calculate scale factors for both dimensions
-        val scaleX = scaledWidth / imageWidth
-        val scaleY = scaledHeight / imageHeight
-
-        // Send the scale factor back (use the smaller one to ensure box fits)
-        onScaleFactorCalculated(minOf(scaleX, scaleY))
+        // Send scaleFactor back to FaceDetectionScreen
+        onScaleFactorCalculated(scaleFactor)
 
         results?.detections()?.forEachIndexed { index, detection ->
             val boundingBox = detection.boundingBox()
 
-            // Calculate box dimensions with proper scaling and offset
-            val left = boundingBox.left * scaleX + offsetX
-            val top = boundingBox.top * scaleY + offsetY
-            val right = boundingBox.right * scaleX + offsetX
-            val bottom = boundingBox.bottom * scaleY + offsetY
+            // Add padding to the box (20% of the face size)
+            val padX = (boundingBox.width() * 0.2f)
+            val padY = (boundingBox.height() * 0.2f)
+
+            // Calculate box dimensions with padding
+            val left = (boundingBox.left - padX) * scaleFactor
+            val top = (boundingBox.top - padY) * scaleFactor
+            val right = (boundingBox.right + padX) * scaleFactor
+            val bottom = (boundingBox.bottom + padY) * scaleFactor
 
             // Draw the rectangle (bounding box)
             drawRect(
                 color = boxColor,
                 topLeft = Offset(left, top),
                 size = Size(right - left, bottom - top),
-                style = Stroke(width = 8f)
+                style = Stroke(width = 4.dp.toPx())  // Made line thicker
             )
 
-            // Draw the label text
+            // Get classification info
             val label = classifications?.getOrNull(index)?.first ?: "Unknown"
             val confidence = classifications?.getOrNull(index)?.second
             val displayText = if (confidence != null) {
@@ -89,18 +67,36 @@ fun FaceDetectionOverlay(
                 label
             }
 
+            // Draw the label text
             drawContext.canvas.nativeCanvas.apply {
-                drawText(
-                    displayText,
-                    left,
-                    top - 10f,
-                    android.graphics.Paint().apply {
-                        color = android.graphics.Color.GREEN
-                        textSize = 40f
-                        isFakeBoldText = true
-                        setShadowLayer(3f, 1f, 1f, android.graphics.Color.BLACK)
-                    }
+                val paint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.GREEN
+                    textSize = 48f  // Increased text size
+                    isFakeBoldText = true
+                    //setShadowLayer(4f, 2f, 2f, android.graphics.Color.BLACK)  // Added stronger shadow
+                    textAlign = android.graphics.Paint.Align.LEFT
+                }
+
+                // Calculate text position (moved slightly higher above the box)
+                val textX = left
+                val textY = top - 20f  // Moved text higher above the box
+
+                // Draw text background for better readability
+                val textBounds = android.graphics.Rect()
+                paint.getTextBounds(displayText, 0, displayText.length, textBounds)
+                val backgroundPaint = android.graphics.Paint().apply {
+                    color = android.graphics.Color.argb(128, 0, 0, 0)  // Semi-transparent black
+                }
+                drawRect(
+                    textX - 4f,
+                    textY - textBounds.height() - 4f,
+                    textX + textBounds.width() + 4f,
+                    textY + 4f,
+                    backgroundPaint
                 )
+
+                // Draw the text
+                drawText(displayText, textX, textY, paint)
             }
         }
     }
