@@ -14,6 +14,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.ui.Modifier
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -33,6 +34,7 @@ fun MainScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
 
     // State variables for scaling and image dimensions.
+    var scaleFactor by remember { mutableFloatStateOf(1f) }
     var imageWidth by remember {mutableIntStateOf(0)}
     var imageHeight by remember {mutableIntStateOf(0)}
 
@@ -60,7 +62,8 @@ fun MainScreen(
                 imageWidth = imageProxy.width
                 imageHeight = imageProxy.height
                 mainViewModel.processImage(
-                    imageProxy = imageProxy
+                    imageProxy = imageProxy,
+                    scaleFactor = scaleFactor
                 )
             }
             combinedResult.let { result ->
@@ -69,7 +72,10 @@ fun MainScreen(
                     imageWidth = imageWidth,
                     imageHeight = imageHeight,
                     context = context,
-                    classifications = result?.classifications
+                    classifications = result?.classifications,
+                    onScaleFactorCalculated =  {
+                        scaleFactor = it
+                    }
                 )
             }
         }

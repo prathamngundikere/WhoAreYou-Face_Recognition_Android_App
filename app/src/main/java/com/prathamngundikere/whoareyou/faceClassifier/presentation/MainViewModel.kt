@@ -21,7 +21,8 @@ class MainViewModel @Inject constructor(
     val resultState = _resultState.asStateFlow()
 
     fun processImage(
-        imageProxy: ImageProxy
+        imageProxy: ImageProxy,
+        scaleFactor: Float
     ) {
         viewModelScope.launch {
             _resultState.update {
@@ -30,7 +31,8 @@ class MainViewModel @Inject constructor(
             _resultState.update {
                 it.copy(
                     combinedResult = faceClassifier.processImage(
-                        imageProxy = imageProxy
+                        imageProxy = imageProxy,
+                        scaleFactor = scaleFactor
                     )
                 )
             }

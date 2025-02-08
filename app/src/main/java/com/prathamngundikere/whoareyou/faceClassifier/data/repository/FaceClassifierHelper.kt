@@ -80,7 +80,7 @@ class FaceClassifierHelper @Inject constructor(
      * @return A [CombinedResult] containing detected face bounding boxes, classification results,
      *         and the total inference time.
      */
-    override suspend fun processImage(imageProxy: ImageProxy): CombinedResult = withContext(Dispatchers.Default) {
+    override suspend fun processImage(imageProxy: ImageProxy, scaleFactor: Float): CombinedResult = withContext(Dispatchers.Default) {
         Log.i(TAG, "In the process Image")
         val startTime = SystemClock.uptimeMillis()
 
@@ -99,6 +99,7 @@ class FaceClassifierHelper @Inject constructor(
             result = faceDetectionResult,
             imageWidth = imageProxy.width,
             imageHeight = imageProxy.height,
+            scaleFactor = scaleFactor
         )
         val classificationResults = mutableListOf<Pair<String, Float>>()
 
@@ -119,42 +120,6 @@ class FaceClassifierHelper @Inject constructor(
             faceDetector.close()
         }
     }
-
-    // Runs face detection on the given MPImage using the MediaPipe FaceDetector in LIVE_STREAM mode.
-    /*@OptIn(ExperimentalCoroutinesApi::class)
-    private suspend fun runFaceDetectionAsync(bitmap: Bitmap): FaceDetectorResult =
-        withContext(Dispatchers.IO) {
-            Log.i(TAG, "In Face Detection Async")
-            suspendCancellableCoroutine { cont ->
-                val baseOptions = BaseOptions.builder()
-                    .setDelegate(Delegate.CPU)
-                    .setModelAssetPath(FACE_MODEL)
-                    .build()
-                val options = FaceDetector.FaceDetectorOptions.builder()
-                    .setBaseOptions(baseOptions)
-                    .setMinDetectionConfidence(MIN_DETECTION_CONFIDENCE)
-                    .setRunningMode(RunningMode.LIVE_STREAM)
-                    .setResultListener { result, _ ->
-                        if (cont.isActive) {
-                            cont.resume(result)
-                        }
-
-                    }
-                    .setErrorListener { error ->
-                        if (cont.isActive) {
-                            cont.resumeWithException(error)
-                        }
-                    }
-                    .build()
-                val faceDetector = FaceDetector.createFromOptions(context, options)
-
-                val mpImage = BitmapImageBuilder(bitmap).build()
-
-                faceDetector.detectAsync(mpImage, SystemClock.uptimeMillis())
-                // Close the detector if the coroutine is cancelled.
-                cont.invokeOnCancellation { faceDetector.close() }
-            }
-        }*/
 
     // Classifies the given face Bitmap using a TFLite model.
     private suspend fun classifyFace(faceBitmap: Bitmap): Pair<String, Float> =
@@ -265,51 +230,59 @@ class FaceClassifierHelper @Inject constructor(
         bitmap: Bitmap,
         result: FaceDetectorResult,
         imageWidth: Int,
-        imageHeight: Int
+        imageHeight: Int,
+        scaleFactor: Float
     ): List<Bitmap> {
         Log.i(TAG, "In cropped faces")
-        // Crop faces
         val croppedFaces = mutableListOf<Bitmap>()
-
-        // Calculate scale factors dynamically
-        val scaleFactorX = bitmap.width.toFloat() / imageWidth
-        val scaleFactorY = bitmap.height.toFloat() / imageHeight
 
         result.detections().forEach { detection ->
             val boundingBox = detection.boundingBox()
 
-            // Scale bounding box coordinates
-            var left = (boundingBox.left * scaleFactorX).toInt().coerceIn(0, bitmap.width)
-            var top = (boundingBox.top * scaleFactorY).toInt().coerceIn(0, bitmap.height)
-            var right = (boundingBox.right * scaleFactorX).toInt().coerceIn(0, bitmap.width)
-            var bottom = (boundingBox.bottom * scaleFactorY).toInt().coerceIn(0, bitmap.height)
+            // Calculate the center of the face
+            val centerX = boundingBox.centerX() * scaleFactor
+            val centerY = boundingBox.centerY() * scaleFactor
 
-            val width = (right - left)
-            val height = (bottom - top)
+            // Calculate the original width and height of the detection
+            val originalWidth = (boundingBox.right - boundingBox.left) * scaleFactor
+            val originalHeight = (boundingBox.bottom - boundingBox.top) * scaleFactor
 
-            val maxSide = maxOf(width, height)
+            // Add margin (1.5x larger than the original detection)
+            val marginFactor = 1.5f
+            val targetSize = maxOf(originalWidth, originalHeight) * marginFactor
 
-            val centerX = boundingBox.centerX().toInt()
-            val centerY = boundingBox.centerY().toInt()
+            // Calculate new bounds with margin
+            var newLeft = (centerX - targetSize / 2).toInt()
+            var newTop = (centerY - targetSize / 2).toInt()
+            var cropSize = targetSize.toInt()
 
-            // Calculate new top-left so that the crop is centered and square.
-            var newLeft = 0
-            var newTop = 0
-            if (bitmap.width - maxSide > 0 && bitmap.height - maxSide > 0) {
-                newLeft = (centerX - maxSide / 2).coerceIn(0, bitmap.width - maxSide)
-                newTop = (centerY - maxSide / 2).coerceIn(0, bitmap.height - maxSide)
+            // Adjust bounds to ensure they're within the image
+            if (newLeft < 0) newLeft = 0
+            if (newTop < 0) newTop = 0
+            if (newLeft + cropSize > bitmap.width) {
+                cropSize = bitmap.width - newLeft
             }
+            if (newTop + cropSize > bitmap.height) {
+                cropSize = bitmap.height - newTop
+            }
+
             try {
-                if (newLeft >= 0 && newTop >= 0 && maxSide > 0) {
+                if (newLeft >= 0 && newTop >= 0 && cropSize > 0 &&
+                    newLeft + cropSize <= bitmap.width &&
+                    newTop + cropSize <= bitmap.height) {
+
                     val faceBitmap = Bitmap.createBitmap(
                         bitmap,
-                        newLeft, newTop,
-                        maxSide, maxSide
+                        newLeft,
+                        newTop,
+                        cropSize,
+                        cropSize
                     )
                     croppedFaces.add(faceBitmap)
                 }
             } catch (e: Exception) {
                 Log.e("FaceCrop", "Error Cropping the image: ${e.message}")
+                e.printStackTrace()
             }
         }
         return croppedFaces

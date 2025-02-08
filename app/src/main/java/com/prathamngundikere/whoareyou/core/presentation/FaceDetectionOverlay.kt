@@ -4,20 +4,17 @@ import android.content.Context
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.core.content.ContextCompat
 import com.google.mediapipe.tasks.vision.facedetector.FaceDetectorResult
 import com.prathamngundikere.whoareyou.R
+import kotlin.math.min
 
 @Composable
 fun FaceDetectionOverlay(
@@ -25,36 +22,55 @@ fun FaceDetectionOverlay(
     imageWidth: Int,
     imageHeight: Int,
     context: Context,
-    classifications: List<Pair<String, Float>>?
+    classifications: List<Pair<String, Float>>?,
+    onScaleFactorCalculated: (Float) -> Unit,
 ) {
-
     val boxColor = remember { Color(ContextCompat.getColor(context, R.color.teal_200)) }
-
-    // Remember canvas size dynamically
-    var canvasSize by remember { mutableStateOf(Size(0f, 0f)) }
 
     Canvas(
         modifier = Modifier
             .fillMaxSize()
-            .onSizeChanged { newSize ->
-                canvasSize = Size(newSize.width.toFloat(), newSize.height.toFloat())
-            }
     ) {
 
-        if (imageWidth == 0 || imageHeight == 0 || canvasSize.width == 0f || canvasSize.height == 0f) return@Canvas
+        // Calculate aspect ratios
+        val imageAspectRatio = imageWidth.toFloat() / imageHeight
+        val canvasAspectRatio = size.width / size.height
 
-        // Use actual canvas size
-        val scaleX = canvasSize.width / imageWidth
-        val scaleY = canvasSize.height / imageHeight
+        // Calculate actual dimensions maintaining aspect ratio
+        val scaledWidth: Float
+        val scaledHeight: Float
+        val offsetX: Float
+        val offsetY: Float
+
+        if (imageAspectRatio > canvasAspectRatio) {
+            // Image is wider than canvas
+            scaledWidth = size.width
+            scaledHeight = size.width / imageAspectRatio
+            offsetX = 0f
+            offsetY = (size.height - scaledHeight) / 2
+        } else {
+            // Image is taller than canvas
+            scaledHeight = size.height
+            scaledWidth = size.height * imageAspectRatio
+            offsetX = (size.width - scaledWidth) / 2
+            offsetY = 0f
+        }
+
+        // Calculate scale factors for both dimensions
+        val scaleX = scaledWidth / imageWidth
+        val scaleY = scaledHeight / imageHeight
+
+        // Send the scale factor back (use the smaller one to ensure box fits)
+        onScaleFactorCalculated(minOf(scaleX, scaleY))
 
         results?.detections()?.forEachIndexed { index, detection ->
-            //val paddingBox = 20f
             val boundingBox = detection.boundingBox()
 
-            val left = boundingBox.left * scaleX
-            val top = boundingBox.top * scaleY
-            val right = boundingBox.right * scaleX
-            val bottom = boundingBox.bottom * scaleY
+            // Calculate box dimensions with proper scaling and offset
+            val left = boundingBox.left * scaleX + offsetX
+            val top = boundingBox.top * scaleY + offsetY
+            val right = boundingBox.right * scaleX + offsetX
+            val bottom = boundingBox.bottom * scaleY + offsetY
 
             // Draw the rectangle (bounding box)
             drawRect(
@@ -63,19 +79,26 @@ fun FaceDetectionOverlay(
                 size = Size(right - left, bottom - top),
                 style = Stroke(width = 8f)
             )
-            // Draw the label text above the bounding box.
-            // For simplicity we use the label from the classification at the same index.
+
+            // Draw the label text
             val label = classifications?.getOrNull(index)?.first ?: "Unknown"
-            // Draw the text using the native canvas.
+            val confidence = classifications?.getOrNull(index)?.second
+            val displayText = if (confidence != null) {
+                "$label (${(confidence * 100).toInt()}%)"
+            } else {
+                label
+            }
+
             drawContext.canvas.nativeCanvas.apply {
                 drawText(
-                    label,
+                    displayText,
                     left,
-                    top - 10f, // place the text a bit above the box
+                    top - 10f,
                     android.graphics.Paint().apply {
                         color = android.graphics.Color.GREEN
                         textSize = 40f
-                        // Optionally, set additional text properties (e.g., bold, anti-alias, etc.)
+                        isFakeBoldText = true
+                        setShadowLayer(3f, 1f, 1f, android.graphics.Color.BLACK)
                     }
                 )
             }
