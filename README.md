@@ -4,7 +4,7 @@ WhoAreYou is an Android application that performs real-time face detection and c
 
 ## Screenshot
 
-![App Screenshot](screenshot.png)
+![App Screenshot]([screenshot.png](https://github.com/prathamngundikere/WhoAreYou-Face_Recognition_Android_App/blob/master/screenshot/screenshot.jpg))
 
 ## Features
 
@@ -88,7 +88,7 @@ Since the app does not automatically request camera permissions, follow these st
 
 ## Download
 
-Download the latest APK from [this link](https://your-download-link.com).
+Download the latest APK from [this link](https://github.com/prathamngundikere/WhoAreYou-Face_Recognition_Android_App/releases/latest).
 
 ## Credits
 
